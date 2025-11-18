@@ -5,7 +5,7 @@ services:
     container_name: loki
     command: -config.file=/etc/loki/local-config.yaml
     volumes:
-      - ./loki_data:/tmp/loki
+      - loki_data:/tmp/loki
       - ./loki/local-config.yaml:/etc/loki/local-config.yaml:ro
     ports:
       - '3100:3100'
