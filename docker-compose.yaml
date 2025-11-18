@@ -10,6 +10,7 @@ services:
     ports:
       - '3100:3100'
     restart: unless-stopped
+    user: root
 
   vector:
     build:
