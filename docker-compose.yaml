@@ -21,6 +21,9 @@ services:
       - ./vector/vector.toml:/etc/vector/vector.toml:ro
     environment:
       - LOKI_HOST_LABEL=${SSH_HOST_HOBOT}
+      - SSH_HOST_HOBOT=${SSH_HOST_HOBOT}
+      - SSH_USER_HOBOT=${SSH_USER_HOBOT}
+      - SSH_PASS_HOBOT=${SSH_PASS_HOBOT}
     command: ['--config', '/etc/vector/vector.toml']
     restart: unless-stopped
     depends_on:
