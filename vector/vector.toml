@@ -1,0 +1,69 @@
+[api]
+enabled = true
+address = "0.0.0.0:8686"
+
+[sources.ssh_hobot]
+type = "exec"
+mode = "streaming"
+command = [
+  "/bin/sh",
+  "-c",
+  "sshpass -p \"$SSH_PASS_HOBOT\" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 ${SSH_USER_HOBOT}@${SSH_HOST_HOBOT} 'tail -n 0 -F admin/logs/services/$(date +%Y)/*.log'"
+]
+decoding.codec = "bytes"
+include_stderr = false
+
+[transforms.parse_hobot]
+type = "remap"
+inputs = ["ssh_hobot"]
+source = '''
+# Сохраняем сообщение из исходного события
+message_str = to_string!(.message)
+
+# Фильтруем пустые и служебные сообщения
+if is_empty(message_str) || 
+   (contains(message_str, "==>") && contains(message_str, "<==")) ||
+   starts_with(message_str, "tail:") {
+  abort
+}
+
+# Обрабатываем ТОЛЬКО STDERR сообщения с уровнями
+if contains(message_str, "STDERR:") && 
+   (contains(message_str, "[Error]") || 
+    contains(message_str, "[Info]") || 
+    contains(message_str, "[Warning]")) {
+  
+  # Полностью пересоздаем событие с нуля
+  . = {}
+  
+  # Парсим структурированные логи
+  parsed = parse_regex!(message_str, r'^\[[^\]]+\]\s+\[\d+\]\s+STDERR:\s+(?:(?P<timestamp>\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+)\s+)?(?P<file>[^:]+):(?P<line>\d+):\s+\[(?P<level>[^\]]+)\]\s+(?P<message>.*)$')
+  
+  if is_object(parsed) {
+    # Явно устанавливаем timestamp для Loki
+    .timestamp = parsed.timestamp
+    .level = downcase(parsed.level)  # Приводим к нижнему регистру для consistency
+    .message = parsed.message
+    .file = parsed.file + ":" + parsed.line
+    .service = "hobot"
+  } else {
+    abort
+  }
+} else {
+  abort
+}
+'''
+
+[sinks.loki]
+type = "loki"
+inputs = ["parse_hobot"]
+endpoint = "http://loki:3100"
+encoding.codec = "json"
+compression = "none"
+labels = { job = "{{ service }}", level = "{{ level }}" }
+
+[sinks.console]
+type = "console"
+inputs = ["parse_hobot"]
+target = "stdout"
+encoding.codec = "json"
